@@ -1,4 +1,5 @@
 ///<reference path='references.ts' />
+/* @internal */
 var ts;
 (function (ts) {
     var formatting;
@@ -44,7 +45,7 @@ var ts;
                     return [this.token];
                 };
                 TokenSingleValueAccess.prototype.Contains = function (tokenValue) {
-                    return tokenValue == this.token;
+                    return tokenValue === this.token;
                 };
                 return TokenSingleValueAccess;
             })();
@@ -54,7 +55,7 @@ var ts;
                 }
                 TokenAllAccess.prototype.GetTokens = function () {
                     var result = [];
-                    for (var token = 0; token <= 126; token++) {
+                    for (var token = 0 /* FirstToken */; token <= 130 /* LastToken */; token++) {
                         result.push(token);
                     }
                     return result;
@@ -95,18 +96,18 @@ var ts;
                     return this.tokenAccess.toString();
                 };
                 TokenRange.Any = TokenRange.AllTokens();
-                TokenRange.AnyIncludingMultilineComments = TokenRange.FromTokens(TokenRange.Any.GetTokens().concat([3]));
-                TokenRange.Keywords = TokenRange.FromRange(66, 126);
-                TokenRange.BinaryOperators = TokenRange.FromRange(24, 64);
-                TokenRange.BinaryKeywordOperators = TokenRange.FromTokens([86, 87, 126]);
-                TokenRange.UnaryPrefixOperators = TokenRange.FromTokens([38, 39, 47, 46]);
-                TokenRange.UnaryPrefixExpressions = TokenRange.FromTokens([7, 65, 16, 18, 14, 93, 88]);
-                TokenRange.UnaryPreincrementExpressions = TokenRange.FromTokens([65, 16, 93, 88]);
-                TokenRange.UnaryPostincrementExpressions = TokenRange.FromTokens([65, 17, 19, 88]);
-                TokenRange.UnaryPredecrementExpressions = TokenRange.FromTokens([65, 16, 93, 88]);
-                TokenRange.UnaryPostdecrementExpressions = TokenRange.FromTokens([65, 17, 19, 88]);
-                TokenRange.Comments = TokenRange.FromTokens([2, 3]);
-                TokenRange.TypeNames = TokenRange.FromTokens([65, 120, 122, 113, 123, 99, 112]);
+                TokenRange.AnyIncludingMultilineComments = TokenRange.FromTokens(TokenRange.Any.GetTokens().concat([3 /* MultiLineCommentTrivia */]));
+                TokenRange.Keywords = TokenRange.FromRange(67 /* FirstKeyword */, 130 /* LastKeyword */);
+                TokenRange.BinaryOperators = TokenRange.FromRange(24 /* FirstBinaryOperator */, 65 /* LastBinaryOperator */);
+                TokenRange.BinaryKeywordOperators = TokenRange.FromTokens([87 /* InKeyword */, 88 /* InstanceOfKeyword */, 130 /* OfKeyword */, 112 /* AsKeyword */, 120 /* IsKeyword */]);
+                TokenRange.UnaryPrefixOperators = TokenRange.FromTokens([39 /* PlusPlusToken */, 40 /* MinusMinusToken */, 48 /* TildeToken */, 47 /* ExclamationToken */]);
+                TokenRange.UnaryPrefixExpressions = TokenRange.FromTokens([7 /* NumericLiteral */, 66 /* Identifier */, 16 /* OpenParenToken */, 18 /* OpenBracketToken */, 14 /* OpenBraceToken */, 94 /* ThisKeyword */, 89 /* NewKeyword */]);
+                TokenRange.UnaryPreincrementExpressions = TokenRange.FromTokens([66 /* Identifier */, 16 /* OpenParenToken */, 94 /* ThisKeyword */, 89 /* NewKeyword */]);
+                TokenRange.UnaryPostincrementExpressions = TokenRange.FromTokens([66 /* Identifier */, 17 /* CloseParenToken */, 19 /* CloseBracketToken */, 89 /* NewKeyword */]);
+                TokenRange.UnaryPredecrementExpressions = TokenRange.FromTokens([66 /* Identifier */, 16 /* OpenParenToken */, 94 /* ThisKeyword */, 89 /* NewKeyword */]);
+                TokenRange.UnaryPostdecrementExpressions = TokenRange.FromTokens([66 /* Identifier */, 17 /* CloseParenToken */, 19 /* CloseBracketToken */, 89 /* NewKeyword */]);
+                TokenRange.Comments = TokenRange.FromTokens([2 /* SingleLineCommentTrivia */, 3 /* MultiLineCommentTrivia */]);
+                TokenRange.TypeNames = TokenRange.FromTokens([66 /* Identifier */, 124 /* NumberKeyword */, 126 /* StringKeyword */, 116 /* BooleanKeyword */, 127 /* SymbolKeyword */, 100 /* VoidKeyword */, 113 /* AnyKeyword */]);
                 return TokenRange;
             })();
             Shared.TokenRange = TokenRange;

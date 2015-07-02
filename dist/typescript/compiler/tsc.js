@@ -2,6 +2,10 @@
 /// <reference path="commandLineParser.ts"/>
 var ts;
 (function (ts) {
+    /**
+     * Checks to see if the locale is in the appropriate format,
+     * and if it is, attempts to set the appropriate language.
+     */
     function validateLocaleAndSetLanguage(locale, errors) {
         var matchResult = /^([a-z]+)([_\-]([a-z]+))?$/.exec(locale.toLowerCase());
         if (!matchResult) {
@@ -10,6 +14,7 @@ var ts;
         }
         var language = matchResult[1];
         var territory = matchResult[3];
+        // First try the entire locale, then fall back to just language if that's all we have.
         if (!trySetLanguageAndTerritory(language, territory, errors) &&
             !trySetLanguageAndTerritory(language, undefined, errors)) {
             errors.push(ts.createCompilerDiagnostic(ts.Diagnostics.Unsupported_locale_0, locale));
@@ -28,6 +33,7 @@ var ts;
         if (!ts.sys.fileExists(filePath)) {
             return false;
         }
+        // TODO: Add codePage support for readFile?
         try {
             var fileContents = ts.sys.readFile(filePath);
         }
@@ -100,14 +106,14 @@ var ts;
     }
     function executeCommandLine(args) {
         var commandLine = ts.parseCommandLine(args);
-        var configFileName;
-        var configFileWatcher;
-        var cachedProgram;
-        var rootFileNames;
-        var compilerOptions;
-        var compilerHost;
-        var hostGetSourceFile;
-        var timerHandle;
+        var configFileName; // Configuration file name (if any)
+        var configFileWatcher; // Configuration file watcher
+        var cachedProgram; // Program cached from last compilation
+        var rootFileNames; // Root fileNames for compilation
+        var compilerOptions; // Compiler options for compilation
+        var compilerHost; // Compiler host
+        var hostGetSourceFile; // getSourceFile method from default host
+        var timerHandle; // Handle for 0.25s wait timer
         if (commandLine.options.locale) {
             if (!isJSONSupported()) {
                 reportDiagnostic(ts.createCompilerDiagnostic(ts.Diagnostics.The_current_host_does_not_support_the_0_option, "--locale"));
@@ -115,6 +121,8 @@ var ts;
             }
             validateLocaleAndSetLanguage(commandLine.options.locale, commandLine.errors);
         }
+        // If there are any errors due to command line parsing and/or
+        // setting up localization, report them and quit.
         if (commandLine.errors.length > 0) {
             reportDiagnostics(commandLine.errors);
             return ts.sys.exit(ts.ExitStatus.DiagnosticsPresent_OutputsSkipped);
@@ -148,7 +156,8 @@ var ts;
             printHelp();
             return ts.sys.exit(ts.ExitStatus.Success);
         }
-        if (commandLine.options.watch) {
+        // Firefox has Object.prototype.watch
+        if (commandLine.options.watch && commandLine.options.hasOwnProperty("watch")) {
             if (!ts.sys.watchFile) {
                 reportDiagnostic(ts.createCompilerDiagnostic(ts.Diagnostics.The_current_host_does_not_support_the_0_option, "--watch"));
                 return ts.sys.exit(ts.ExitStatus.DiagnosticsPresent_OutputsSkipped);
@@ -158,6 +167,7 @@ var ts;
             }
         }
         performCompilation();
+        // Invoked to perform initial compilation or re-compilation in watch mode
         function performCompilation() {
             if (!cachedProgram) {
                 if (configFileName) {
@@ -191,18 +201,23 @@ var ts;
             reportDiagnostic(ts.createCompilerDiagnostic(ts.Diagnostics.Compilation_complete_Watching_for_file_changes));
         }
         function getSourceFile(fileName, languageVersion, onError) {
+            // Return existing SourceFile object if one is available
             if (cachedProgram) {
                 var sourceFile = cachedProgram.getSourceFile(fileName);
+                // A modified source file has no watcher and should not be reused
                 if (sourceFile && sourceFile.fileWatcher) {
                     return sourceFile;
                 }
             }
+            // Use default host function
             var sourceFile = hostGetSourceFile(fileName, languageVersion, onError);
             if (sourceFile && compilerOptions.watch) {
+                // Attach a file watcher
                 sourceFile.fileWatcher = ts.sys.watchFile(sourceFile.fileName, function () { return sourceFileChanged(sourceFile); });
             }
             return sourceFile;
         }
+        // Change cached program to the given program
         function setCachedProgram(program) {
             if (cachedProgram) {
                 var newSourceFiles = program ? program.getSourceFiles() : undefined;
@@ -217,15 +232,20 @@ var ts;
             }
             cachedProgram = program;
         }
+        // If a source file changes, mark it as unwatched and start the recompilation timer
         function sourceFileChanged(sourceFile) {
             sourceFile.fileWatcher.close();
             sourceFile.fileWatcher = undefined;
             startTimer();
         }
+        // If the configuration file changes, forget cached program and start the recompilation timer
         function configFileChanged() {
             setCachedProgram(undefined);
             startTimer();
         }
+        // Upon detecting a file change, wait for 250ms and then perform a recompilation. This gives batch
+        // operations (such as saving all modified files in an editor) a chance to complete before we kick
+        // off a new compilation.
         function startTimer() {
             if (timerHandle) {
                 clearTimeout(timerHandle);
@@ -264,6 +284,10 @@ var ts;
             if (memoryUsed >= 0) {
                 reportStatisticalValue("Memory used", Math.round(memoryUsed / 1000) + "K");
             }
+            // Individual component times.
+            // Note: To match the behavior of previous versions of the compiler, the reported parse time includes
+            // I/O read time and processing time for triple-slash references and module imports, and the reported
+            // emit time includes I/O write time. We preserve this behavior so we can accurately compare times.
             reportTimeStatistic("I/O read", ts.ioReadTime);
             reportTimeStatistic("I/O write", ts.ioWriteTime);
             reportTimeStatistic("Parse time", ts.programTime);
@@ -274,8 +298,11 @@ var ts;
         }
         return { program: program, exitStatus: exitStatus };
         function compileProgram() {
+            // First get any syntactic errors. 
             var diagnostics = program.getSyntacticDiagnostics();
             reportDiagnostics(diagnostics);
+            // If we didn't have any syntactic errors, then also try getting the global and 
+            // semantic errors.
             if (diagnostics.length === 0) {
                 var diagnostics = program.getGlobalDiagnostics();
                 reportDiagnostics(diagnostics);
@@ -284,16 +311,21 @@ var ts;
                     reportDiagnostics(diagnostics);
                 }
             }
+            // If the user doesn't want us to emit, then we're done at this point.
             if (compilerOptions.noEmit) {
                 return diagnostics.length
                     ? ts.ExitStatus.DiagnosticsPresent_OutputsSkipped
                     : ts.ExitStatus.Success;
             }
+            // Otherwise, emit and report any errors we ran into.
             var emitOutput = program.emit();
             reportDiagnostics(emitOutput.diagnostics);
+            // If the emitter didn't emit anything, then pass that value along.
             if (emitOutput.emitSkipped) {
                 return ts.ExitStatus.DiagnosticsPresent_OutputsSkipped;
             }
+            // The emitter emitted something, inform the caller if that happened in the presence
+            // of diagnostics or not.
             if (diagnostics.length > 0 || emitOutput.diagnostics.length > 0) {
                 return ts.ExitStatus.DiagnosticsPresent_OutputsGenerated;
             }
@@ -305,26 +337,34 @@ var ts;
     }
     function printHelp() {
         var output = "";
+        // We want to align our "syntax" and "examples" commands to a certain margin.
         var syntaxLength = getDiagnosticText(ts.Diagnostics.Syntax_Colon_0, "").length;
         var examplesLength = getDiagnosticText(ts.Diagnostics.Examples_Colon_0, "").length;
         var marginLength = Math.max(syntaxLength, examplesLength);
+        // Build up the syntactic skeleton.
         var syntax = makePadding(marginLength - syntaxLength);
         syntax += "tsc [" + getDiagnosticText(ts.Diagnostics.options) + "] [" + getDiagnosticText(ts.Diagnostics.file) + " ...]";
         output += getDiagnosticText(ts.Diagnostics.Syntax_Colon_0, syntax);
         output += ts.sys.newLine + ts.sys.newLine;
+        // Build up the list of examples.
         var padding = makePadding(marginLength);
         output += getDiagnosticText(ts.Diagnostics.Examples_Colon_0, makePadding(marginLength - examplesLength) + "tsc hello.ts") + ts.sys.newLine;
         output += padding + "tsc --out file.js file.ts" + ts.sys.newLine;
         output += padding + "tsc @args.txt" + ts.sys.newLine;
         output += ts.sys.newLine;
         output += getDiagnosticText(ts.Diagnostics.Options_Colon) + ts.sys.newLine;
+        // Sort our options by their names, (e.g. "--noImplicitAny" comes before "--watch")
         var optsList = ts.filter(ts.optionDeclarations.slice(), function (v) { return !v.experimental; });
         optsList.sort(function (a, b) { return ts.compareValues(a.name.toLowerCase(), b.name.toLowerCase()); });
+        // We want our descriptions to align at the same column in our output,
+        // so we keep track of the longest option usage string.
         var marginLength = 0;
-        var usageColumn = [];
+        var usageColumn = []; // Things like "-d, --declaration" go in here.
         var descriptionColumn = [];
         for (var i = 0; i < optsList.length; i++) {
             var option = optsList[i];
+            // If an option lacks a description,
+            // it is not officially supported.
             if (!option.description) {
                 continue;
             }
@@ -338,12 +378,15 @@ var ts;
             usageText += getParamType(option);
             usageColumn.push(usageText);
             descriptionColumn.push(getDiagnosticText(option.description));
+            // Set the new margin for the description column if necessary.
             marginLength = Math.max(usageText.length, marginLength);
         }
+        // Special case that can't fit in the loop.
         var usageText = " @<" + getDiagnosticText(ts.Diagnostics.file) + ">";
         usageColumn.push(usageText);
         descriptionColumn.push(getDiagnosticText(ts.Diagnostics.Insert_command_line_options_and_files_from_a_file));
         marginLength = Math.max(usageText.length, marginLength);
+        // Print out each row, aligning all the descriptions on the same column.
         for (var i = 0; i < usageColumn.length; i++) {
             var usage = usageColumn[i];
             var description = descriptionColumn[i];

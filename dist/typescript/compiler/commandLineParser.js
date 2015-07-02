@@ -4,20 +4,21 @@
 /// <reference path="scanner.ts"/>
 var ts;
 (function (ts) {
+    /* @internal */
     ts.optionDeclarations = [
         {
             name: "charset",
-            type: "string",
+            type: "string"
         },
         {
             name: "declaration",
             shortName: "d",
             type: "boolean",
-            description: ts.Diagnostics.Generates_corresponding_d_ts_file,
+            description: ts.Diagnostics.Generates_corresponding_d_ts_file
         },
         {
             name: "diagnostics",
-            type: "boolean",
+            type: "boolean"
         },
         {
             name: "emitBOM",
@@ -27,39 +28,49 @@ var ts;
             name: "help",
             shortName: "h",
             type: "boolean",
-            description: ts.Diagnostics.Print_this_message,
+            description: ts.Diagnostics.Print_this_message
         },
         {
             name: "inlineSourceMap",
-            type: "boolean",
+            type: "boolean"
         },
         {
             name: "inlineSources",
-            type: "boolean",
+            type: "boolean"
+        },
+        {
+            name: "jsx",
+            type: {
+                "preserve": 1 /* Preserve */,
+                "react": 2 /* React */
+            },
+            paramType: ts.Diagnostics.KIND,
+            description: ts.Diagnostics.Specify_JSX_code_generation_Colon_preserve_or_react,
+            error: ts.Diagnostics.Argument_for_jsx_must_be_preserve_or_react
         },
         {
             name: "listFiles",
-            type: "boolean",
+            type: "boolean"
         },
         {
             name: "locale",
-            type: "string",
+            type: "string"
         },
         {
             name: "mapRoot",
             type: "string",
             isFilePath: true,
             description: ts.Diagnostics.Specifies_the_location_where_debugger_should_locate_map_files_instead_of_generated_locations,
-            paramType: ts.Diagnostics.LOCATION,
+            paramType: ts.Diagnostics.LOCATION
         },
         {
             name: "module",
             shortName: "m",
             type: {
-                "commonjs": 1,
-                "amd": 2,
-                "system": 4,
-                "umd": 3,
+                "commonjs": 1 /* CommonJS */,
+                "amd": 2 /* AMD */,
+                "system": 4 /* System */,
+                "umd": 3 /* UMD */
             },
             description: ts.Diagnostics.Specify_module_code_generation_Colon_commonjs_amd_system_or_umd,
             paramType: ts.Diagnostics.KIND,
@@ -68,8 +79,8 @@ var ts;
         {
             name: "newLine",
             type: {
-                "crlf": 0,
-                "lf": 1
+                "crlf": 0 /* CarriageReturnLineFeed */,
+                "lf": 1 /* LineFeed */
             },
             description: ts.Diagnostics.Specifies_the_end_of_line_sequence_to_be_used_when_emitting_files_Colon_CRLF_dos_or_LF_unix,
             paramType: ts.Diagnostics.NEWLINE,
@@ -78,7 +89,7 @@ var ts;
         {
             name: "noEmit",
             type: "boolean",
-            description: ts.Diagnostics.Do_not_emit_outputs,
+            description: ts.Diagnostics.Do_not_emit_outputs
         },
         {
             name: "noEmitHelpers",
@@ -87,33 +98,38 @@ var ts;
         {
             name: "noEmitOnError",
             type: "boolean",
-            description: ts.Diagnostics.Do_not_emit_outputs_if_any_type_checking_errors_were_reported,
+            description: ts.Diagnostics.Do_not_emit_outputs_if_any_errors_were_reported
         },
         {
             name: "noImplicitAny",
             type: "boolean",
-            description: ts.Diagnostics.Raise_error_on_expressions_and_declarations_with_an_implied_any_type,
+            description: ts.Diagnostics.Raise_error_on_expressions_and_declarations_with_an_implied_any_type
         },
         {
             name: "noLib",
-            type: "boolean",
+            type: "boolean"
         },
         {
             name: "noResolve",
-            type: "boolean",
+            type: "boolean"
+        },
+        {
+            name: "skipDefaultLibCheck",
+            type: "boolean"
         },
         {
             name: "out",
             type: "string",
+            isFilePath: true,
             description: ts.Diagnostics.Concatenate_and_emit_output_to_single_file,
-            paramType: ts.Diagnostics.FILE,
+            paramType: ts.Diagnostics.FILE
         },
         {
             name: "outDir",
             type: "string",
             isFilePath: true,
             description: ts.Diagnostics.Redirect_output_structure_to_the_directory,
-            paramType: ts.Diagnostics.DIRECTORY,
+            paramType: ts.Diagnostics.DIRECTORY
         },
         {
             name: "preserveConstEnums",
@@ -131,35 +147,35 @@ var ts;
         {
             name: "removeComments",
             type: "boolean",
-            description: ts.Diagnostics.Do_not_emit_comments_to_output,
+            description: ts.Diagnostics.Do_not_emit_comments_to_output
         },
         {
             name: "rootDir",
             type: "string",
             isFilePath: true,
             description: ts.Diagnostics.Specifies_the_root_directory_of_input_files_Use_to_control_the_output_directory_structure_with_outDir,
-            paramType: ts.Diagnostics.LOCATION,
+            paramType: ts.Diagnostics.LOCATION
         },
         {
-            name: "separateCompilation",
-            type: "boolean",
+            name: "isolatedModules",
+            type: "boolean"
         },
         {
             name: "sourceMap",
             type: "boolean",
-            description: ts.Diagnostics.Generates_corresponding_map_file,
+            description: ts.Diagnostics.Generates_corresponding_map_file
         },
         {
             name: "sourceRoot",
             type: "string",
             isFilePath: true,
             description: ts.Diagnostics.Specifies_the_location_where_debugger_should_locate_TypeScript_files_instead_of_source_locations,
-            paramType: ts.Diagnostics.LOCATION,
+            paramType: ts.Diagnostics.LOCATION
         },
         {
             name: "suppressImplicitAnyIndexErrors",
             type: "boolean",
-            description: ts.Diagnostics.Suppress_noImplicitAny_errors_for_indexing_objects_lacking_index_signatures,
+            description: ts.Diagnostics.Suppress_noImplicitAny_errors_for_indexing_objects_lacking_index_signatures
         },
         {
             name: "stripInternal",
@@ -170,7 +186,7 @@ var ts;
         {
             name: "target",
             shortName: "t",
-            type: { "es3": 0, "es5": 1, "es6": 2 },
+            type: { "es3": 0 /* ES3 */, "es5": 1 /* ES5 */, "es6": 2 /* ES6 */ },
             description: ts.Diagnostics.Specify_ECMAScript_target_version_Colon_ES3_default_ES5_or_ES6_experimental,
             paramType: ts.Diagnostics.VERSION,
             error: ts.Diagnostics.Argument_for_target_option_must_be_ES3_ES5_or_ES6
@@ -179,18 +195,29 @@ var ts;
             name: "version",
             shortName: "v",
             type: "boolean",
-            description: ts.Diagnostics.Print_the_compiler_s_version,
+            description: ts.Diagnostics.Print_the_compiler_s_version
         },
         {
             name: "watch",
             shortName: "w",
             type: "boolean",
-            description: ts.Diagnostics.Watch_input_files,
+            description: ts.Diagnostics.Watch_input_files
+        },
+        {
+            name: "experimentalAsyncFunctions",
+            type: "boolean",
+            description: ts.Diagnostics.Enables_experimental_support_for_ES7_async_functions
+        },
+        {
+            name: "experimentalDecorators",
+            type: "boolean",
+            description: ts.Diagnostics.Enables_experimental_support_for_ES7_decorators
         },
         {
             name: "emitDecoratorMetadata",
             type: "boolean",
-            experimental: true
+            experimental: true,
+            description: ts.Diagnostics.Enables_experimental_support_for_emitting_type_metadata_for_decorators
         }
     ];
     function parseCommandLine(commandLine) {
@@ -215,16 +242,18 @@ var ts;
             var i = 0;
             while (i < args.length) {
                 var s = args[i++];
-                if (s.charCodeAt(0) === 64) {
+                if (s.charCodeAt(0) === 64 /* at */) {
                     parseResponseFile(s.slice(1));
                 }
-                else if (s.charCodeAt(0) === 45) {
-                    s = s.slice(s.charCodeAt(1) === 45 ? 2 : 1).toLowerCase();
+                else if (s.charCodeAt(0) === 45 /* minus */) {
+                    s = s.slice(s.charCodeAt(1) === 45 /* minus */ ? 2 : 1).toLowerCase();
+                    // Try to translate short option names to their full equivalents.
                     if (ts.hasProperty(shortOptionNames, s)) {
                         s = shortOptionNames[s];
                     }
                     if (ts.hasProperty(optionNameMap, s)) {
                         var opt = optionNameMap[s];
+                        // Check to see if no argument was provided (e.g. "--locale" is the last command-line argument).
                         if (!args[i] && opt.type !== "boolean") {
                             errors.push(ts.createCompilerDiagnostic(ts.Diagnostics.Compiler_option_0_expects_an_argument, opt.name));
                         }
@@ -238,6 +267,7 @@ var ts;
                             case "string":
                                 options[opt.name] = args[i++] || "";
                                 break;
+                            // If not a primitive, the possible types are specified in what is effectively a map of options.
                             default:
                                 var map = opt.type;
                                 var key = (args[i++] || "").toLowerCase();
@@ -267,14 +297,14 @@ var ts;
             var args = [];
             var pos = 0;
             while (true) {
-                while (pos < text.length && text.charCodeAt(pos) <= 32)
+                while (pos < text.length && text.charCodeAt(pos) <= 32 /* space */)
                     pos++;
                 if (pos >= text.length)
                     break;
                 var start = pos;
-                if (text.charCodeAt(start) === 34) {
+                if (text.charCodeAt(start) === 34 /* doubleQuote */) {
                     pos++;
-                    while (pos < text.length && text.charCodeAt(pos) !== 34)
+                    while (pos < text.length && text.charCodeAt(pos) !== 34 /* doubleQuote */)
                         pos++;
                     if (pos < text.length) {
                         args.push(text.substring(start + 1, pos));
@@ -285,7 +315,7 @@ var ts;
                     }
                 }
                 else {
-                    while (text.charCodeAt(pos) > 32)
+                    while (text.charCodeAt(pos) > 32 /* space */)
                         pos++;
                     args.push(text.substring(start, pos));
                 }
@@ -294,6 +324,10 @@ var ts;
         }
     }
     ts.parseCommandLine = parseCommandLine;
+    /**
+      * Read tsconfig.json file
+      * @param fileName The path to the config file
+      */
     function readConfigFile(fileName) {
         try {
             var text = ts.sys.readFile(fileName);
@@ -304,6 +338,11 @@ var ts;
         return parseConfigFileText(fileName, text);
     }
     ts.readConfigFile = readConfigFile;
+    /**
+      * Parse the text of the tsconfig.json file
+      * @param fileName The path to the config file
+      * @param jsonText The text of the config file
+      */
     function parseConfigFileText(fileName, jsonText) {
         try {
             return { config: /\S/.test(jsonText) ? JSON.parse(jsonText) : {} };
@@ -313,11 +352,17 @@ var ts;
         }
     }
     ts.parseConfigFileText = parseConfigFileText;
+    /**
+      * Parse the contents of a config file (tsconfig.json).
+      * @param json The contents of the config file to parse
+      * @param basePath A root directory to resolve relative path entries in the config
+      *    file to. e.g. outDir
+      */
     function parseConfigFile(json, host, basePath) {
         var errors = [];
         return {
             options: getCompilerOptions(),
-            fileNames: getFiles(),
+            fileNames: getFileNames(),
             errors: errors
         };
         function getCompilerOptions() {
@@ -361,23 +406,35 @@ var ts;
             }
             return options;
         }
-        function getFiles() {
-            var files = [];
+        function getFileNames() {
+            var fileNames = [];
             if (ts.hasProperty(json, "files")) {
                 if (json["files"] instanceof Array) {
-                    var files = ts.map(json["files"], function (s) { return ts.combinePaths(basePath, s); });
+                    fileNames = ts.map(json["files"], function (s) { return ts.combinePaths(basePath, s); });
                 }
             }
             else {
-                var sysFiles = host.readDirectory(basePath, ".ts");
+                var exclude = json["exclude"] instanceof Array ? ts.map(json["exclude"], ts.normalizeSlashes) : undefined;
+                var sysFiles = host.readDirectory(basePath, ".ts", exclude).concat(host.readDirectory(basePath, ".tsx", exclude));
                 for (var i = 0; i < sysFiles.length; i++) {
-                    var name = sysFiles[i];
-                    if (!ts.fileExtensionIs(name, ".d.ts") || !ts.contains(sysFiles, name.substr(0, name.length - 5) + ".ts")) {
-                        files.push(name);
+                    var name_1 = sysFiles[i];
+                    if (ts.fileExtensionIs(name_1, ".d.ts")) {
+                        var baseName = name_1.substr(0, name_1.length - ".d.ts".length);
+                        if (!ts.contains(sysFiles, baseName + ".tsx") && !ts.contains(sysFiles, baseName + ".ts")) {
+                            fileNames.push(name_1);
+                        }
+                    }
+                    else if (ts.fileExtensionIs(name_1, ".ts")) {
+                        if (!ts.contains(sysFiles, name_1 + "x")) {
+                            fileNames.push(name_1);
+                        }
+                    }
+                    else {
+                        fileNames.push(name_1);
                     }
                 }
             }
-            return files;
+            return fileNames;
         }
     }
     ts.parseConfigFile = parseConfigFile;

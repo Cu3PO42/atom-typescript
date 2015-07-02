@@ -1,4 +1,5 @@
 ///<reference path='references.ts' />
+/* @internal */
 var ts;
 (function (ts) {
     var formatting;

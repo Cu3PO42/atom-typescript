@@ -1,18 +1,37 @@
 /// <reference path="types.ts"/>
+/* @internal */
 var ts;
 (function (ts) {
-    (function (Ternary) {
-        Ternary[Ternary["False"] = 0] = "False";
-        Ternary[Ternary["Maybe"] = 1] = "Maybe";
-        Ternary[Ternary["True"] = -1] = "True";
-    })(ts.Ternary || (ts.Ternary = {}));
-    var Ternary = ts.Ternary;
-    (function (Comparison) {
-        Comparison[Comparison["LessThan"] = -1] = "LessThan";
-        Comparison[Comparison["EqualTo"] = 0] = "EqualTo";
-        Comparison[Comparison["GreaterThan"] = 1] = "GreaterThan";
-    })(ts.Comparison || (ts.Comparison = {}));
-    var Comparison = ts.Comparison;
+    function createFileMap(getCanonicalFileName) {
+        var files = {};
+        return {
+            get: get,
+            set: set,
+            contains: contains,
+            remove: remove,
+            forEachValue: forEachValueInMap
+        };
+        function set(fileName, value) {
+            files[normalizeKey(fileName)] = value;
+        }
+        function get(fileName) {
+            return files[normalizeKey(fileName)];
+        }
+        function contains(fileName) {
+            return hasProperty(files, normalizeKey(fileName));
+        }
+        function remove(fileName) {
+            var key = normalizeKey(fileName);
+            delete files[key];
+        }
+        function forEachValueInMap(f) {
+            forEachValue(files, f);
+        }
+        function normalizeKey(key) {
+            return getCanonicalFileName(normalizeSlashes(key));
+        }
+    }
+    ts.createFileMap = createFileMap;
     function forEach(array, callback) {
         if (array) {
             for (var i = 0, len = array.length; i < len; i++) {
@@ -127,6 +146,19 @@ var ts;
         }
     }
     ts.addRange = addRange;
+    function rangeEquals(array1, array2, pos, end) {
+        while (pos < end) {
+            if (array1[pos] !== array2[pos]) {
+                return false;
+            }
+            pos++;
+        }
+        return true;
+    }
+    ts.rangeEquals = rangeEquals;
+    /**
+     * Returns the last element of an array if non-empty, undefined otherwise.
+     */
     function lastOrUndefined(array) {
         if (array.length === 0) {
             return undefined;
@@ -249,6 +281,16 @@ var ts;
         }
     }
     ts.copyMap = copyMap;
+    /**
+     * Creates a map from the elements of an array.
+     *
+     * @param array the array of input elements.
+     * @param makeKey a function that produces a key for a given element.
+     *
+     * This function makes no effort to avoid collisions; if any two elements produce
+     * the same key with the given 'makeKey' function, then the element with the higher
+     * index in the array will be the one associated with the produced key.
+     */
     function arrayToMap(array, makeKey) {
         var result = {};
         forEach(array, function (value) {
@@ -283,8 +325,10 @@ var ts;
         var end = start + length;
         Debug.assert(start >= 0, "start must be non-negative, is " + start);
         Debug.assert(length >= 0, "length must be non-negative, is " + length);
-        Debug.assert(start <= file.text.length, "start must be within the bounds of the file. " + start + " > " + file.text.length);
-        Debug.assert(end <= file.text.length, "end must be the bounds of the file. " + end + " > " + file.text.length);
+        if (file) {
+            Debug.assert(start <= file.text.length, "start must be within the bounds of the file. " + start + " > " + file.text.length);
+            Debug.assert(end <= file.text.length, "end must be the bounds of the file. " + end + " > " + file.text.length);
+        }
         var text = getLocaleSpecificMessage(message.key);
         if (arguments.length > 4) {
             text = formatStringFromArgs(text, arguments, 4);
@@ -295,7 +339,7 @@ var ts;
             length: length,
             messageText: text,
             category: message.category,
-            code: message.code,
+            code: message.code
         };
     }
     ts.createFileDiagnostic = createFileDiagnostic;
@@ -335,12 +379,12 @@ var ts;
     ts.concatenateDiagnosticMessageChains = concatenateDiagnosticMessageChains;
     function compareValues(a, b) {
         if (a === b)
-            return 0;
+            return 0 /* EqualTo */;
         if (a === undefined)
-            return -1;
+            return -1 /* LessThan */;
         if (b === undefined)
-            return 1;
-        return a < b ? -1 : 1;
+            return 1 /* GreaterThan */;
+        return a < b ? -1 /* LessThan */ : 1 /* GreaterThan */;
     }
     ts.compareValues = compareValues;
     function getDiagnosticFileName(diagnostic) {
@@ -352,11 +396,12 @@ var ts;
             compareValues(d1.length, d2.length) ||
             compareValues(d1.code, d2.code) ||
             compareMessageText(d1.messageText, d2.messageText) ||
-            0;
+            0 /* EqualTo */;
     }
     ts.compareDiagnostics = compareDiagnostics;
     function compareMessageText(text1, text2) {
         while (text1 && text2) {
+            // We still have both chains.
             var string1 = typeof text1 === "string" ? text1 : text1.messageText;
             var string2 = typeof text2 === "string" ? text2 : text2.messageText;
             var res = compareValues(string1, string2);
@@ -367,9 +412,11 @@ var ts;
             text2 = typeof text2 === "string" ? undefined : text2.next;
         }
         if (!text1 && !text2) {
-            return 0;
+            // if the chains are done, then these messages are the same.
+            return 0 /* EqualTo */;
         }
-        return text1 ? 1 : -1;
+        // We still have one chain remaining.  The shorter chain should come first.
+        return text1 ? 1 /* GreaterThan */ : -1 /* LessThan */;
     }
     function sortAndDeduplicateDiagnostics(diagnostics) {
         return deduplicateSortedDiagnostics(diagnostics.sort(compareDiagnostics));
@@ -383,7 +430,7 @@ var ts;
         var previousDiagnostic = diagnostics[0];
         for (var i = 1; i < diagnostics.length; i++) {
             var currentDiagnostic = diagnostics[i];
-            var isDupe = compareDiagnostics(currentDiagnostic, previousDiagnostic) === 0;
+            var isDupe = compareDiagnostics(currentDiagnostic, previousDiagnostic) === 0 /* EqualTo */;
             if (!isDupe) {
                 newDiagnostics.push(currentDiagnostic);
                 previousDiagnostic = currentDiagnostic;
@@ -396,9 +443,10 @@ var ts;
         return path.replace(/\\/g, "/");
     }
     ts.normalizeSlashes = normalizeSlashes;
+    // Returns length of path root (i.e. length of "/", "x:/", "//server/share/, file:///user/files")
     function getRootLength(path) {
-        if (path.charCodeAt(0) === 47) {
-            if (path.charCodeAt(1) !== 47)
+        if (path.charCodeAt(0) === 47 /* slash */) {
+            if (path.charCodeAt(1) !== 47 /* slash */)
                 return 1;
             var p1 = path.indexOf("/", 2);
             if (p1 < 0)
@@ -408,14 +456,23 @@ var ts;
                 return p1 + 1;
             return p2 + 1;
         }
-        if (path.charCodeAt(1) === 58) {
-            if (path.charCodeAt(2) === 47)
+        if (path.charCodeAt(1) === 58 /* colon */) {
+            if (path.charCodeAt(2) === 47 /* slash */)
                 return 3;
             return 2;
         }
+        // Per RFC 1738 'file' URI schema has the shape file://<host>/<path>
+        // if <host> is omitted then it is assumed that host value is 'localhost',
+        // however slash after the omitted <host> is not removed.
+        // file:///folder1/file1 - this is a correct URI
+        // file://folder2/file2 - this is an incorrect URI
+        if (path.lastIndexOf("file:///", 0) === 0) {
+            return "file:///".length;
+        }
         var idx = path.indexOf('://');
-        if (idx !== -1)
-            return idx + 3;
+        if (idx !== -1) {
+            return idx + "://".length;
+        }
         return 0;
     }
     ts.getRootLength = getRootLength;
@@ -430,6 +487,8 @@ var ts;
                     normalized.pop();
                 }
                 else {
+                    // A part may be an empty string (which is 'falsy') if the path had consecutive slashes,
+                    // e.g. "path//file.ts".  Drop these before re-joining the parts.
                     if (part) {
                         normalized.push(part);
                     }
@@ -464,7 +523,8 @@ var ts;
     function getNormalizedPathComponents(path, currentDirectory) {
         path = normalizeSlashes(path);
         var rootLength = getRootLength(path);
-        if (rootLength == 0) {
+        if (rootLength === 0) {
+            // If the path is not rooted it is relative to current directory
             path = combinePaths(normalizeSlashes(currentDirectory), path);
             rootLength = getRootLength(path);
         }
@@ -486,24 +546,36 @@ var ts;
         // In this example the root is:  http://www.website.com/ 
         // normalized path components should be ["http://www.website.com/", "folder1", "folder2"]
         var urlLength = url.length;
+        // Initial root length is http:// part
         var rootLength = url.indexOf("://") + "://".length;
         while (rootLength < urlLength) {
-            if (url.charCodeAt(rootLength) === 47) {
+            // Consume all immediate slashes in the protocol 
+            // eg.initial rootlength is just file:// but it needs to consume another "/" in file:///
+            if (url.charCodeAt(rootLength) === 47 /* slash */) {
                 rootLength++;
             }
             else {
+                // non slash character means we continue proceeding to next component of root search 
                 break;
             }
         }
+        // there are no parts after http:// just return current string as the pathComponent
         if (rootLength === urlLength) {
             return [url];
         }
+        // Find the index of "/" after website.com so the root can be http://www.website.com/ (from existing http://)
         var indexOfNextSlash = url.indexOf(ts.directorySeparator, rootLength);
         if (indexOfNextSlash !== -1) {
+            // Found the "/" after the website.com so the root is length of http://www.website.com/ 
+            // and get components afetr the root normally like any other folder components
             rootLength = indexOfNextSlash + 1;
             return normalizedPathComponents(url, rootLength);
         }
         else {
+            // Can't find the host assume the rest of the string as component 
+            // but make sure we append "/"  to it as root is not joined using "/"
+            // eg. if url passed in was http://website.com we want to use root as [http://website.com/] 
+            // so that other path manipulations will be correct and it can be merged with relative paths correctly
             return [url + ts.directorySeparator];
         }
     }
@@ -519,13 +591,17 @@ var ts;
         var pathComponents = getNormalizedPathOrUrlComponents(relativeOrAbsolutePath, currentDirectory);
         var directoryComponents = getNormalizedPathOrUrlComponents(directoryPathOrUrl, currentDirectory);
         if (directoryComponents.length > 1 && lastOrUndefined(directoryComponents) === "") {
+            // If the directory path given was of type test/cases/ then we really need components of directory to be only till its name
+            // that is  ["test", "cases", ""] needs to be actually ["test", "cases"]
             directoryComponents.length--;
         }
+        // Find the component that differs
         for (var joinStartIndex = 0; joinStartIndex < pathComponents.length && joinStartIndex < directoryComponents.length; joinStartIndex++) {
             if (getCanonicalFileName(directoryComponents[joinStartIndex]) !== getCanonicalFileName(pathComponents[joinStartIndex])) {
                 break;
             }
         }
+        // Get the relative path
         if (joinStartIndex) {
             var relativePath = "";
             var relativePathComponents = pathComponents.slice(joinStartIndex, pathComponents.length);
@@ -536,6 +612,7 @@ var ts;
             }
             return relativePath + relativePathComponents.join(ts.directorySeparator);
         }
+        // Cant find the relative path, get the absolute path
         var absolutePath = getNormalizedPathFromPathComponents(pathComponents);
         if (isAbsolutePathAnUrl && isRootedDiskPath(absolutePath)) {
             absolutePath = "file:///" + absolutePath;
@@ -566,8 +643,11 @@ var ts;
         return pathLen > extLen && path.substr(pathLen - extLen, extLen) === extension;
     }
     ts.fileExtensionIs = fileExtensionIs;
-    ts.supportedExtensions = [".ts", ".d.ts"];
-    var extensionsToRemove = [".d.ts", ".ts", ".js"];
+    /**
+     *  List of supported extensions in order of file resolution precedence.
+     */
+    ts.supportedExtensions = [".tsx", ".ts", ".d.ts"];
+    var extensionsToRemove = [".d.ts", ".ts", ".js", ".tsx", ".jsx"];
     function removeFileExtension(path) {
         for (var _i = 0; _i < extensionsToRemove.length; _i++) {
             var ext = extensionsToRemove[_i];
@@ -592,7 +672,7 @@ var ts;
         "\"": "\\\"",
         "\u2028": "\\u2028",
         "\u2029": "\\u2029",
-        "\u0085": "\\u0085"
+        "\u0085": "\\u0085" // nextLine
     };
     function Symbol(flags, name) {
         this.flags = flags;
@@ -613,7 +693,7 @@ var ts;
                 pos: 0,
                 end: 0,
                 flags: 0,
-                parent: undefined,
+                parent: undefined
             };
             return Node;
         },
@@ -621,16 +701,9 @@ var ts;
         getTypeConstructor: function () { return Type; },
         getSignatureConstructor: function () { return Signature; }
     };
-    (function (AssertionLevel) {
-        AssertionLevel[AssertionLevel["None"] = 0] = "None";
-        AssertionLevel[AssertionLevel["Normal"] = 1] = "Normal";
-        AssertionLevel[AssertionLevel["Aggressive"] = 2] = "Aggressive";
-        AssertionLevel[AssertionLevel["VeryAggressive"] = 3] = "VeryAggressive";
-    })(ts.AssertionLevel || (ts.AssertionLevel = {}));
-    var AssertionLevel = ts.AssertionLevel;
     var Debug;
     (function (Debug) {
-        var currentAssertionLevel = 0;
+        var currentAssertionLevel = 0 /* None */;
         function shouldAssert(level) {
             return currentAssertionLevel >= level;
         }

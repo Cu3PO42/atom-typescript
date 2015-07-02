@@ -1,4 +1,5 @@
 ///<reference path='references.ts' />
+/* @internal */
 var ts;
 (function (ts) {
     var formatting;
@@ -12,7 +13,7 @@ var ts;
                 this.customContextChecks = funcs;
             }
             RuleOperationContext.prototype.IsAny = function () {
-                return this == RuleOperationContext.Any;
+                return this === RuleOperationContext.Any;
             };
             RuleOperationContext.prototype.InContext = function (context) {
                 if (this.IsAny()) {

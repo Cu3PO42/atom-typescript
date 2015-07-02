@@ -1,4 +1,5 @@
 ///<reference path='references.ts' />
+/* @internal */
 var ts;
 (function (ts) {
     var formatting;
@@ -14,9 +15,10 @@ var ts;
                 return result;
             };
             RulesMap.prototype.Initialize = function (rules) {
-                this.mapRowLength = 126 + 1;
-                this.map = new Array(this.mapRowLength * this.mapRowLength);
-                var rulesBucketConstructionStateList = new Array(this.map.length);
+                this.mapRowLength = 130 /* LastToken */ + 1;
+                this.map = new Array(this.mapRowLength * this.mapRowLength); //new Array<RulesBucket>(this.mapRowLength * this.mapRowLength);
+                // This array is used only during construction of the rulesbucket in the map
+                var rulesBucketConstructionStateList = new Array(this.map.length); //new Array<RulesBucketConstructionState>(this.map.length);
                 this.FillRules(rules, rulesBucketConstructionStateList);
                 return this.map;
             };
@@ -28,17 +30,18 @@ var ts;
             };
             RulesMap.prototype.GetRuleBucketIndex = function (row, column) {
                 var rulesBucketIndex = (row * this.mapRowLength) + column;
+                //Debug.Assert(rulesBucketIndex < this.map.Length, "Trying to access an index outside the array.");
                 return rulesBucketIndex;
             };
             RulesMap.prototype.FillRule = function (rule, rulesBucketConstructionStateList) {
                 var _this = this;
-                var specificRule = rule.Descriptor.LeftTokenRange != formatting.Shared.TokenRange.Any &&
-                    rule.Descriptor.RightTokenRange != formatting.Shared.TokenRange.Any;
+                var specificRule = rule.Descriptor.LeftTokenRange !== formatting.Shared.TokenRange.Any &&
+                    rule.Descriptor.RightTokenRange !== formatting.Shared.TokenRange.Any;
                 rule.Descriptor.LeftTokenRange.GetTokens().forEach(function (left) {
                     rule.Descriptor.RightTokenRange.GetTokens().forEach(function (right) {
                         var rulesBucketIndex = _this.GetRuleBucketIndex(left, right);
                         var rulesBucket = _this.map[rulesBucketIndex];
-                        if (rulesBucket == undefined) {
+                        if (rulesBucket === undefined) {
                             rulesBucket = _this.map[rulesBucketIndex] = new RulesBucket();
                         }
                         rulesBucket.AddRule(rule, specificRule, rulesBucketConstructionStateList, rulesBucketIndex);
@@ -74,6 +77,21 @@ var ts;
         var RulesPosition = formatting.RulesPosition;
         var RulesBucketConstructionState = (function () {
             function RulesBucketConstructionState() {
+                //// The Rules list contains all the inserted rules into a rulebucket in the following order:
+                ////    1- Ignore rules with specific token combination
+                ////    2- Ignore rules with any token combination
+                ////    3- Context rules with specific token combination
+                ////    4- Context rules with any token combination
+                ////    5- Non-context rules with specific token combination
+                ////    6- Non-context rules with any token combination
+                //// 
+                //// The member rulesInsertionIndexBitmap is used to describe the number of rules
+                //// in each sub-bucket (above) hence can be used to know the index of where to insert 
+                //// the next rule. It's a bitmap which contains 6 different sections each is given 5 bits.
+                ////
+                //// Example:
+                //// In order to insert a rule to the end of sub-bucket (3), we get the index by adding
+                //// the values in the bitmap segments 3rd, 2nd, and 1st.
                 this.rulesInsertionIndexBitmap = 0;
             }
             RulesBucketConstructionState.prototype.GetInsertionIndex = function (maskPosition) {
@@ -90,7 +108,7 @@ var ts;
             RulesBucketConstructionState.prototype.IncreaseInsertionIndex = function (maskPosition) {
                 var value = (this.rulesInsertionIndexBitmap >> maskPosition) & Mask;
                 value++;
-                ts.Debug.assert((value & Mask) == value, "Adding more rules into the sub-bucket than allowed. Maximum allowed is 32 rules.");
+                ts.Debug.assert((value & Mask) === value, "Adding more rules into the sub-bucket than allowed. Maximum allowed is 32 rules.");
                 var temp = this.rulesInsertionIndexBitmap & ~(Mask << maskPosition);
                 temp |= value << maskPosition;
                 this.rulesInsertionIndexBitmap = temp;
@@ -107,7 +125,7 @@ var ts;
             };
             RulesBucket.prototype.AddRule = function (rule, specificTokens, constructionState, rulesBucketIndex) {
                 var position;
-                if (rule.Operation.Action == 1) {
+                if (rule.Operation.Action === 1 /* Ignore */) {
                     position = specificTokens ?
                         RulesPosition.IgnoreRulesSpecific :
                         RulesPosition.IgnoreRulesAny;

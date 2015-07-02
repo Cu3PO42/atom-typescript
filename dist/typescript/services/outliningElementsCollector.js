@@ -1,3 +1,4 @@
+/* @internal */
 var ts;
 (function (ts) {
     var OutliningElementsCollector;
@@ -36,7 +37,9 @@ var ts;
                     var singleLineCommentCount = 0;
                     for (var _i = 0; _i < comments.length; _i++) {
                         var currentComment = comments[_i];
-                        if (currentComment.kind === 2) {
+                        // For single line comments, combine consecutive ones (2 or more) into
+                        // a single span from the start of the first till the end of the last
+                        if (currentComment.kind === 2 /* SingleLineCommentTrivia */) {
                             if (isFirstSingleLineComment) {
                                 firstSingleLineCommentStart = currentComment.pos;
                             }
@@ -44,7 +47,7 @@ var ts;
                             lastSingleLineCommentEnd = currentComment.end;
                             singleLineCommentCount++;
                         }
-                        else if (currentComment.kind === 3) {
+                        else if (currentComment.kind === 3 /* MultiLineCommentTrivia */) {
                             combineAndAddMultipleSingleLineComments(singleLineCommentCount, firstSingleLineCommentStart, lastSingleLineCommentEnd);
                             addOutliningSpanComments(currentComment, false);
                             singleLineCommentCount = 0;
@@ -56,17 +59,18 @@ var ts;
                 }
             }
             function combineAndAddMultipleSingleLineComments(count, start, end) {
+                // Only outline spans of two or more consecutive single line comments
                 if (count > 1) {
                     var multipleSingleLineComments = {
                         pos: start,
                         end: end,
-                        kind: 2
+                        kind: 2 /* SingleLineCommentTrivia */
                     };
                     addOutliningSpanComments(multipleSingleLineComments, false);
                 }
             }
             function autoCollapse(node) {
-                return ts.isFunctionBlock(node) && node.parent.kind !== 164;
+                return ts.isFunctionBlock(node) && node.parent.kind !== 169 /* ArrowFunction */;
             }
             var depth = 0;
             var maxDepth = 20;
@@ -78,36 +82,42 @@ var ts;
                     addOutliningForLeadingCommentsForNode(n);
                 }
                 switch (n.kind) {
-                    case 180:
+                    case 187 /* Block */:
                         if (!ts.isFunctionBlock(n)) {
                             var parent_1 = n.parent;
-                            var openBrace = ts.findChildOfKind(n, 14, sourceFile);
-                            var closeBrace = ts.findChildOfKind(n, 15, sourceFile);
-                            if (parent_1.kind === 185 ||
-                                parent_1.kind === 188 ||
-                                parent_1.kind === 189 ||
-                                parent_1.kind === 187 ||
-                                parent_1.kind === 184 ||
-                                parent_1.kind === 186 ||
-                                parent_1.kind === 193 ||
-                                parent_1.kind === 224) {
+                            var openBrace = ts.findChildOfKind(n, 14 /* OpenBraceToken */, sourceFile);
+                            var closeBrace = ts.findChildOfKind(n, 15 /* CloseBraceToken */, sourceFile);
+                            // Check if the block is standalone, or 'attached' to some parent statement.
+                            // If the latter, we want to collaps the block, but consider its hint span
+                            // to be the entire span of the parent.
+                            if (parent_1.kind === 192 /* DoStatement */ ||
+                                parent_1.kind === 195 /* ForInStatement */ ||
+                                parent_1.kind === 196 /* ForOfStatement */ ||
+                                parent_1.kind === 194 /* ForStatement */ ||
+                                parent_1.kind === 191 /* IfStatement */ ||
+                                parent_1.kind === 193 /* WhileStatement */ ||
+                                parent_1.kind === 200 /* WithStatement */ ||
+                                parent_1.kind === 239 /* CatchClause */) {
                                 addOutliningSpan(parent_1, openBrace, closeBrace, autoCollapse(n));
                                 break;
                             }
-                            if (parent_1.kind === 197) {
+                            if (parent_1.kind === 204 /* TryStatement */) {
+                                // Could be the try-block, or the finally-block.
                                 var tryStatement = parent_1;
                                 if (tryStatement.tryBlock === n) {
                                     addOutliningSpan(parent_1, openBrace, closeBrace, autoCollapse(n));
                                     break;
                                 }
                                 else if (tryStatement.finallyBlock === n) {
-                                    var finallyKeyword = ts.findChildOfKind(tryStatement, 81, sourceFile);
+                                    var finallyKeyword = ts.findChildOfKind(tryStatement, 82 /* FinallyKeyword */, sourceFile);
                                     if (finallyKeyword) {
                                         addOutliningSpan(finallyKeyword, openBrace, closeBrace, autoCollapse(n));
                                         break;
                                     }
                                 }
                             }
+                            // Block was a standalone block.  In this case we want to only collapse
+                            // the span of the block, independent of any parent span.
                             var span = ts.createTextSpanFromBounds(n.getStart(), n.end);
                             elements.push({
                                 textSpan: span,
@@ -117,25 +127,26 @@ var ts;
                             });
                             break;
                         }
-                    case 207: {
-                        var openBrace = ts.findChildOfKind(n, 14, sourceFile);
-                        var closeBrace = ts.findChildOfKind(n, 15, sourceFile);
+                    // Fallthrough.
+                    case 214 /* ModuleBlock */: {
+                        var openBrace = ts.findChildOfKind(n, 14 /* OpenBraceToken */, sourceFile);
+                        var closeBrace = ts.findChildOfKind(n, 15 /* CloseBraceToken */, sourceFile);
                         addOutliningSpan(n.parent, openBrace, closeBrace, autoCollapse(n));
                         break;
                     }
-                    case 202:
-                    case 203:
-                    case 205:
-                    case 155:
-                    case 208: {
-                        var openBrace = ts.findChildOfKind(n, 14, sourceFile);
-                        var closeBrace = ts.findChildOfKind(n, 15, sourceFile);
+                    case 209 /* ClassDeclaration */:
+                    case 210 /* InterfaceDeclaration */:
+                    case 212 /* EnumDeclaration */:
+                    case 160 /* ObjectLiteralExpression */:
+                    case 215 /* CaseBlock */: {
+                        var openBrace = ts.findChildOfKind(n, 14 /* OpenBraceToken */, sourceFile);
+                        var closeBrace = ts.findChildOfKind(n, 15 /* CloseBraceToken */, sourceFile);
                         addOutliningSpan(n, openBrace, closeBrace, autoCollapse(n));
                         break;
                     }
-                    case 154:
-                        var openBracket = ts.findChildOfKind(n, 18, sourceFile);
-                        var closeBracket = ts.findChildOfKind(n, 19, sourceFile);
+                    case 159 /* ArrayLiteralExpression */:
+                        var openBracket = ts.findChildOfKind(n, 18 /* OpenBracketToken */, sourceFile);
+                        var closeBracket = ts.findChildOfKind(n, 19 /* CloseBracketToken */, sourceFile);
                         addOutliningSpan(n, openBracket, closeBracket, autoCollapse(n));
                         break;
                 }

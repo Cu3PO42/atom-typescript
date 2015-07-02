@@ -2,13 +2,12 @@
 /// <reference path="emitter.ts" />
 var ts;
 (function (ts) {
-    ts.programTime = 0;
-    ts.emitTime = 0;
-    ts.ioReadTime = 0;
-    ts.ioWriteTime = 0;
-    ts.version = "1.5.0";
-    var carriageReturnLineFeed = "\r\n";
-    var lineFeed = "\n";
+    /* @internal */ ts.programTime = 0;
+    /* @internal */ ts.emitTime = 0;
+    /* @internal */ ts.ioReadTime = 0;
+    /* @internal */ ts.ioWriteTime = 0;
+    /** The version of the TypeScript compiler release */
+    ts.version = "1.5.3";
     function findConfigFile(searchPath) {
         var fileName = "tsconfig.json";
         while (true) {
@@ -29,8 +28,11 @@ var ts;
         var currentDirectory;
         var existingDirectories = {};
         function getCanonicalFileName(fileName) {
+            // if underlying system can distinguish between two files whose names differs only in cases then file name already in canonical form.
+            // otherwise use toLowerCase as a canonical form.
             return ts.sys.useCaseSensitiveFileNames ? fileName : fileName.toLowerCase();
         }
+        // returned by CScript sys environment
         var unsupportedFileEncodingErrorCode = -2147024809;
         function getSourceFile(fileName, languageVersion, onError) {
             var text;
@@ -79,9 +81,7 @@ var ts;
                 }
             }
         }
-        var newLine = options.newLine === 0 ? carriageReturnLineFeed :
-            options.newLine === 1 ? lineFeed :
-                ts.sys.newLine;
+        var newLine = ts.getNewLineCharacter(options);
         return {
             getSourceFile: getSourceFile,
             getDefaultLibFileName: function (options) { return ts.combinePaths(ts.getDirectoryPath(ts.normalizePath(ts.sys.getExecutingFilePath())), ts.getDefaultLibFileName(options)); },
@@ -94,7 +94,7 @@ var ts;
     }
     ts.createCompilerHost = createCompilerHost;
     function getPreEmitDiagnostics(program, sourceFile) {
-        var diagnostics = program.getSyntacticDiagnostics(sourceFile).concat(program.getGlobalDiagnostics()).concat(program.getSemanticDiagnostics(sourceFile));
+        var diagnostics = program.getOptionsDiagnostics().concat(program.getSyntacticDiagnostics(sourceFile), program.getGlobalDiagnostics(), program.getSemanticDiagnostics(sourceFile));
         if (program.getCompilerOptions().declaration) {
             diagnostics.concat(program.getDeclarationDiagnostics(sourceFile));
         }
@@ -127,16 +127,21 @@ var ts;
     function createProgram(rootNames, options, host) {
         var program;
         var files = [];
-        var filesByName = {};
         var diagnostics = ts.createDiagnosticCollection();
-        var seenNoDefaultLib = options.noLib;
         var commonSourceDirectory;
         var diagnosticsProducingTypeChecker;
         var noDiagnosticsTypeChecker;
+        var classifiableNames;
+        var skipDefaultLib = options.noLib;
         var start = new Date().getTime();
         host = host || createCompilerHost(options);
+        var filesByName = ts.createFileMap(function (fileName) { return host.getCanonicalFileName(fileName); });
         ts.forEach(rootNames, function (name) { return processRootFile(name, false); });
-        if (!seenNoDefaultLib) {
+        // Do not process the default library if:
+        //  - The '--noLib' flag is used.
+        //  - A 'no-default-lib' reference comment is encountered in
+        //      processing the root files.
+        if (!skipDefaultLib) {
             processRootFile(host.getDefaultLibFileName(options), true);
         }
         verifyCompilerOptions();
@@ -146,10 +151,12 @@ var ts;
             getSourceFiles: function () { return files; },
             getCompilerOptions: function () { return options; },
             getSyntacticDiagnostics: getSyntacticDiagnostics,
+            getOptionsDiagnostics: getOptionsDiagnostics,
             getGlobalDiagnostics: getGlobalDiagnostics,
             getSemanticDiagnostics: getSemanticDiagnostics,
             getDeclarationDiagnostics: getDeclarationDiagnostics,
             getTypeChecker: getTypeChecker,
+            getClassifiableNames: getClassifiableNames,
             getDiagnosticsProducingTypeChecker: getDiagnosticsProducingTypeChecker,
             getCommonSourceDirectory: function () { return commonSourceDirectory; },
             emit: emit,
@@ -157,9 +164,21 @@ var ts;
             getNodeCount: function () { return getDiagnosticsProducingTypeChecker().getNodeCount(); },
             getIdentifierCount: function () { return getDiagnosticsProducingTypeChecker().getIdentifierCount(); },
             getSymbolCount: function () { return getDiagnosticsProducingTypeChecker().getSymbolCount(); },
-            getTypeCount: function () { return getDiagnosticsProducingTypeChecker().getTypeCount(); },
+            getTypeCount: function () { return getDiagnosticsProducingTypeChecker().getTypeCount(); }
         };
         return program;
+        function getClassifiableNames() {
+            if (!classifiableNames) {
+                // Initialize a checker so that all our files are bound.
+                getTypeChecker();
+                classifiableNames = {};
+                for (var _i = 0; _i < files.length; _i++) {
+                    var sourceFile = files[_i];
+                    ts.copyMap(sourceFile.classifiableNames, classifiableNames);
+                }
+            }
+            return classifiableNames;
+        }
         function getEmitHost(writeFileCallback) {
             return {
                 getCanonicalFileName: function (fileName) { return host.getCanonicalFileName(fileName); },
@@ -169,7 +188,7 @@ var ts;
                 getNewLine: function () { return host.getNewLine(); },
                 getSourceFile: program.getSourceFile,
                 getSourceFiles: program.getSourceFiles,
-                writeFile: writeFileCallback || (function (fileName, data, writeByteOrderMark, onError) { return host.writeFile(fileName, data, writeByteOrderMark, onError); }),
+                writeFile: writeFileCallback || (function (fileName, data, writeByteOrderMark, onError) { return host.writeFile(fileName, data, writeByteOrderMark, onError); })
             };
         }
         function getDiagnosticsProducingTypeChecker() {
@@ -179,18 +198,27 @@ var ts;
             return noDiagnosticsTypeChecker || (noDiagnosticsTypeChecker = ts.createTypeChecker(program, false));
         }
         function emit(sourceFile, writeFileCallback) {
+            // If the noEmitOnError flag is set, then check if we have any errors so far.  If so,
+            // immediately bail out.
             if (options.noEmitOnError && getPreEmitDiagnostics(this).length > 0) {
                 return { diagnostics: [], sourceMaps: undefined, emitSkipped: true };
             }
-            var emitResolver = getDiagnosticsProducingTypeChecker().getEmitResolver(sourceFile);
+            // Create the emit resolver outside of the "emitTime" tracking code below.  That way
+            // any cost associated with it (like type checking) are appropriate associated with
+            // the type-checking counter.
+            //
+            // If the -out option is specified, we should not pass the source file to getEmitResolver.
+            // This is because in the -out scenario all files need to be emitted, and therefore all
+            // files need to be type checked. And the way to specify that all files need to be type
+            // checked is to not pass the file to getEmitResolver.
+            var emitResolver = getDiagnosticsProducingTypeChecker().getEmitResolver(options.out ? undefined : sourceFile);
             var start = new Date().getTime();
             var emitResult = ts.emitFiles(emitResolver, getEmitHost(writeFileCallback), sourceFile);
             ts.emitTime += new Date().getTime() - start;
             return emitResult;
         }
         function getSourceFile(fileName) {
-            fileName = host.getCanonicalFileName(fileName);
-            return ts.hasProperty(filesByName, fileName) ? filesByName[fileName] : undefined;
+            return filesByName.get(fileName);
         }
         function getDiagnosticsHelper(sourceFile, getDiagnostics) {
             if (sourceFile) {
@@ -225,15 +253,19 @@ var ts;
         function getDeclarationDiagnosticsForFile(sourceFile) {
             if (!ts.isDeclarationFile(sourceFile)) {
                 var resolver = getDiagnosticsProducingTypeChecker().getEmitResolver(sourceFile);
+                // Don't actually write any files since we're just getting diagnostics.
                 var writeFile = function () { };
                 return ts.getDeclarationDiagnostics(getEmitHost(writeFile), resolver, sourceFile);
             }
         }
-        function getGlobalDiagnostics() {
-            var typeChecker = getDiagnosticsProducingTypeChecker();
+        function getOptionsDiagnostics() {
             var allDiagnostics = [];
-            ts.addRange(allDiagnostics, typeChecker.getGlobalDiagnostics());
             ts.addRange(allDiagnostics, diagnostics.getGlobalDiagnostics());
+            return ts.sortAndDeduplicateDiagnostics(allDiagnostics);
+        }
+        function getGlobalDiagnostics() {
+            var allDiagnostics = [];
+            ts.addRange(allDiagnostics, getDiagnosticsProducingTypeChecker().getGlobalDiagnostics());
             return ts.sortAndDeduplicateDiagnostics(allDiagnostics);
         }
         function hasExtension(fileName) {
@@ -245,7 +277,6 @@ var ts;
         function processSourceFile(fileName, isDefaultLib, refFile, refPos, refEnd) {
             var start;
             var length;
-            var extensions;
             var diagnosticArgument;
             if (refEnd !== undefined && refPos !== undefined) {
                 start = refPos;
@@ -267,14 +298,17 @@ var ts;
                 }
             }
             else {
-                if (options.allowNonTsExtensions && !findSourceFile(fileName, isDefaultLib, refFile, refPos, refEnd)) {
-                    diagnostic = ts.Diagnostics.File_0_not_found;
-                    diagnosticArgument = [fileName];
-                }
-                else if (!ts.forEach(ts.supportedExtensions, function (extension) { return findSourceFile(fileName + extension, isDefaultLib, refFile, refPos, refEnd); })) {
-                    diagnostic = ts.Diagnostics.File_0_not_found;
-                    fileName += ".ts";
-                    diagnosticArgument = [fileName];
+                var nonTsFile = options.allowNonTsExtensions && findSourceFile(fileName, isDefaultLib, refFile, refPos, refEnd);
+                if (!nonTsFile) {
+                    if (options.allowNonTsExtensions) {
+                        diagnostic = ts.Diagnostics.File_0_not_found;
+                        diagnosticArgument = [fileName];
+                    }
+                    else if (!ts.forEach(ts.supportedExtensions, function (extension) { return findSourceFile(fileName + extension, isDefaultLib, refFile, refPos, refEnd); })) {
+                        diagnostic = ts.Diagnostics.File_0_not_found;
+                        fileName += ".ts";
+                        diagnosticArgument = [fileName];
+                    }
                 }
             }
             if (diagnostic) {
@@ -286,18 +320,21 @@ var ts;
                 }
             }
         }
+        // Get source file from normalized fileName
         function findSourceFile(fileName, isDefaultLib, refFile, refStart, refLength) {
-            var canonicalName = host.getCanonicalFileName(fileName);
-            if (ts.hasProperty(filesByName, canonicalName)) {
+            var canonicalName = host.getCanonicalFileName(ts.normalizeSlashes(fileName));
+            if (filesByName.contains(canonicalName)) {
+                // We've already looked for this file, use cached result
                 return getSourceFileFromCache(fileName, canonicalName, false);
             }
             else {
                 var normalizedAbsolutePath = ts.getNormalizedAbsolutePath(fileName, host.getCurrentDirectory());
                 var canonicalAbsolutePath = host.getCanonicalFileName(normalizedAbsolutePath);
-                if (ts.hasProperty(filesByName, canonicalAbsolutePath)) {
+                if (filesByName.contains(canonicalAbsolutePath)) {
                     return getSourceFileFromCache(normalizedAbsolutePath, canonicalAbsolutePath, true);
                 }
-                var file = filesByName[canonicalName] = host.getSourceFile(fileName, options.target, function (hostErrorMessage) {
+                // We haven't looked for this file, do so now and cache result
+                var file = host.getSourceFile(fileName, options.target, function (hostErrorMessage) {
                     if (refFile) {
                         diagnostics.add(ts.createFileDiagnostic(refFile, refStart, refLength, ts.Diagnostics.Cannot_read_file_0_Colon_1, fileName, hostErrorMessage));
                     }
@@ -305,15 +342,18 @@ var ts;
                         diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Cannot_read_file_0_Colon_1, fileName, hostErrorMessage));
                     }
                 });
+                filesByName.set(canonicalName, file);
                 if (file) {
-                    seenNoDefaultLib = seenNoDefaultLib || file.hasNoDefaultLib;
-                    filesByName[canonicalAbsolutePath] = file;
+                    skipDefaultLib = skipDefaultLib || file.hasNoDefaultLib;
+                    // Set the source file for normalized absolute path
+                    filesByName.set(canonicalAbsolutePath, file);
                     if (!options.noResolve) {
                         var basePath = ts.getDirectoryPath(fileName);
                         processReferencedFiles(file, basePath);
                         processImportedModules(file, basePath);
                     }
                     if (isDefaultLib) {
+                        file.isDefaultLib = true;
                         files.unshift(file);
                     }
                     else {
@@ -323,7 +363,7 @@ var ts;
                 return file;
             }
             function getSourceFileFromCache(fileName, canonicalName, useAbsolutePath) {
-                var file = filesByName[canonicalName];
+                var file = filesByName.get(canonicalName);
                 if (file && host.useCaseSensitiveFileNames()) {
                     var sourceFileName = useAbsolutePath ? ts.getNormalizedAbsolutePath(file.fileName, host.getCurrentDirectory()) : file.fileName;
                     if (canonicalName !== sourceFileName) {
@@ -341,9 +381,9 @@ var ts;
         }
         function processImportedModules(file, basePath) {
             ts.forEach(file.statements, function (node) {
-                if (node.kind === 210 || node.kind === 209 || node.kind === 216) {
+                if (node.kind === 217 /* ImportDeclaration */ || node.kind === 216 /* ImportEqualsDeclaration */ || node.kind === 223 /* ExportDeclaration */) {
                     var moduleNameExpr = ts.getExternalModuleName(node);
-                    if (moduleNameExpr && moduleNameExpr.kind === 8) {
+                    if (moduleNameExpr && moduleNameExpr.kind === 8 /* StringLiteral */) {
                         var moduleNameText = moduleNameExpr.text;
                         if (moduleNameText) {
                             var searchPath = basePath;
@@ -362,13 +402,21 @@ var ts;
                         }
                     }
                 }
-                else if (node.kind === 206 && node.name.kind === 8 && (node.flags & 2 || ts.isDeclarationFile(file))) {
+                else if (node.kind === 213 /* ModuleDeclaration */ && node.name.kind === 8 /* StringLiteral */ && (node.flags & 2 /* Ambient */ || ts.isDeclarationFile(file))) {
+                    // TypeScript 1.0 spec (April 2014): 12.1.6
+                    // An AmbientExternalModuleDeclaration declares an external module. 
+                    // This type of declaration is permitted only in the global module.
+                    // The StringLiteral must specify a top - level external module name.
+                    // Relative external module names are not permitted
                     ts.forEachChild(node.body, function (node) {
                         if (ts.isExternalModuleImportEqualsDeclaration(node) &&
-                            ts.getExternalModuleImportEqualsDeclarationExpression(node).kind === 8) {
+                            ts.getExternalModuleImportEqualsDeclarationExpression(node).kind === 8 /* StringLiteral */) {
                             var nameLiteral = ts.getExternalModuleImportEqualsDeclarationExpression(node);
                             var moduleName = nameLiteral.text;
                             if (moduleName) {
+                                // TypeScript 1.0 spec (April 2014): 12.1.6
+                                // An ExternalImportDeclaration in anAmbientExternalModuleDeclaration may reference other external modules 
+                                // only through top - level external module names. Relative external module names are not permitted.
                                 var searchName = ts.normalizePath(ts.combinePaths(basePath, moduleName));
                                 ts.forEach(ts.supportedExtensions, function (extension) { return findModuleSourceFile(searchName + extension, nameLiteral); });
                             }
@@ -384,12 +432,14 @@ var ts;
             var commonPathComponents;
             var currentDirectory = host.getCurrentDirectory();
             ts.forEach(files, function (sourceFile) {
+                // Each file contributes into common source file path
                 if (ts.isDeclarationFile(sourceFile)) {
                     return;
                 }
                 var sourcePathComponents = ts.getNormalizedPathComponents(sourceFile.fileName, currentDirectory);
-                sourcePathComponents.pop();
+                sourcePathComponents.pop(); // The base file name is not part of the common directory path
                 if (!commonPathComponents) {
+                    // first file
                     commonPathComponents = sourcePathComponents;
                     return;
                 }
@@ -399,10 +449,12 @@ var ts;
                             diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Cannot_find_the_common_subdirectory_path_for_the_input_files));
                             return;
                         }
+                        // New common path found that is 0 -> i-1
                         commonPathComponents.length = i;
                         break;
                     }
                 }
+                // If the sourcePathComponents was shorter than the commonPathComponents, truncate to the sourcePathComponents
                 if (sourcePathComponents.length < commonPathComponents.length) {
                     commonPathComponents.length = sourcePathComponents.length;
                 }
@@ -428,18 +480,18 @@ var ts;
             return allFilesBelongToPath;
         }
         function verifyCompilerOptions() {
-            if (options.separateCompilation) {
+            if (options.isolatedModules) {
                 if (options.sourceMap) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_sourceMap_cannot_be_specified_with_option_separateCompilation));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_sourceMap_cannot_be_specified_with_option_isolatedModules));
                 }
                 if (options.declaration) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_declaration_cannot_be_specified_with_option_separateCompilation));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_declaration_cannot_be_specified_with_option_isolatedModules));
                 }
                 if (options.noEmitOnError) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_noEmitOnError_cannot_be_specified_with_option_separateCompilation));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_noEmitOnError_cannot_be_specified_with_option_isolatedModules));
                 }
                 if (options.out) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_out_cannot_be_specified_with_option_separateCompilation));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_out_cannot_be_specified_with_option_isolatedModules));
                 }
             }
             if (options.inlineSourceMap) {
@@ -459,44 +511,54 @@ var ts;
                 }
             }
             if (!options.sourceMap && (options.mapRoot || options.sourceRoot)) {
+                // Error to specify --mapRoot or --sourceRoot without mapSourceFiles
                 if (options.mapRoot) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_mapRoot_cannot_be_specified_without_specifying_sourcemap_option));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_mapRoot_cannot_be_specified_without_specifying_sourceMap_option));
                 }
                 if (options.sourceRoot) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_sourceRoot_cannot_be_specified_without_specifying_sourcemap_option));
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_sourceRoot_cannot_be_specified_without_specifying_sourceMap_option));
                 }
                 return;
             }
-            var languageVersion = options.target || 0;
+            var languageVersion = options.target || 0 /* ES3 */;
             var firstExternalModuleSourceFile = ts.forEach(files, function (f) { return ts.isExternalModule(f) ? f : undefined; });
-            if (options.separateCompilation) {
-                if (!options.module && languageVersion < 2) {
-                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_separateCompilation_can_only_be_used_when_either_option_module_is_provided_or_option_target_is_ES6_or_higher));
+            if (options.isolatedModules) {
+                if (!options.module && languageVersion < 2 /* ES6 */) {
+                    diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_isolatedModules_can_only_be_used_when_either_option_module_is_provided_or_option_target_is_ES6_or_higher));
                 }
                 var firstNonExternalModuleSourceFile = ts.forEach(files, function (f) { return !ts.isExternalModule(f) && !ts.isDeclarationFile(f) ? f : undefined; });
                 if (firstNonExternalModuleSourceFile) {
                     var span = ts.getErrorSpanForNode(firstNonExternalModuleSourceFile, firstNonExternalModuleSourceFile);
-                    diagnostics.add(ts.createFileDiagnostic(firstNonExternalModuleSourceFile, span.start, span.length, ts.Diagnostics.Cannot_compile_namespaces_when_the_separateCompilation_flag_is_provided));
+                    diagnostics.add(ts.createFileDiagnostic(firstNonExternalModuleSourceFile, span.start, span.length, ts.Diagnostics.Cannot_compile_namespaces_when_the_isolatedModules_flag_is_provided));
                 }
             }
-            else if (firstExternalModuleSourceFile && languageVersion < 2 && !options.module) {
+            else if (firstExternalModuleSourceFile && languageVersion < 2 /* ES6 */ && !options.module) {
+                // We cannot use createDiagnosticFromNode because nodes do not have parents yet 
                 var span = ts.getErrorSpanForNode(firstExternalModuleSourceFile, firstExternalModuleSourceFile.externalModuleIndicator);
                 diagnostics.add(ts.createFileDiagnostic(firstExternalModuleSourceFile, span.start, span.length, ts.Diagnostics.Cannot_compile_modules_unless_the_module_flag_is_provided));
             }
-            if (options.module && languageVersion >= 2) {
+            // Cannot specify module gen target when in es6 or above
+            if (options.module && languageVersion >= 2 /* ES6 */) {
                 diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Cannot_compile_modules_into_commonjs_amd_system_or_umd_when_targeting_ES6_or_higher));
             }
+            // there has to be common source directory if user specified --outdir || --sourceRoot
+            // if user specified --mapRoot, there needs to be common source directory if there would be multiple files being emitted
             if (options.outDir ||
                 options.sourceRoot ||
                 (options.mapRoot &&
                     (!options.out || firstExternalModuleSourceFile !== undefined))) {
                 if (options.rootDir && checkSourceFilesBelongToPath(files, options.rootDir)) {
+                    // If a rootDir is specified and is valid use it as the commonSourceDirectory
                     commonSourceDirectory = ts.getNormalizedAbsolutePath(options.rootDir, host.getCurrentDirectory());
                 }
                 else {
+                    // Compute the commonSourceDirectory from the input files
                     commonSourceDirectory = computeCommonSourceDirectory(files);
                 }
                 if (commonSourceDirectory && commonSourceDirectory[commonSourceDirectory.length - 1] !== ts.directorySeparator) {
+                    // Make sure directory path ends with directory separator so this string can directly 
+                    // used to replace with "" to get the relative path of the source file and the relative path doesn't
+                    // start with / making it rooted path
                     commonSourceDirectory += ts.directorySeparator;
                 }
             }
@@ -507,6 +569,14 @@ var ts;
                 if (options.declaration) {
                     diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_noEmit_cannot_be_specified_with_option_declaration));
                 }
+            }
+            if (options.emitDecoratorMetadata &&
+                !options.experimentalDecorators) {
+                diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_experimentalDecorators_must_also_be_specified_when_option_emitDecoratorMetadata_is_specified));
+            }
+            if (options.experimentalAsyncFunctions &&
+                options.target !== 2 /* ES6 */) {
+                diagnostics.add(ts.createCompilerDiagnostic(ts.Diagnostics.Option_experimentalAsyncFunctions_cannot_be_specified_when_targeting_ES5_or_lower));
             }
         }
     }

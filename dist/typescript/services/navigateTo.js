@@ -1,3 +1,4 @@
+/* @internal */
 var ts;
 (function (ts) {
     var NavigateTo;
@@ -5,18 +6,23 @@ var ts;
         function getNavigateToItems(program, cancellationToken, searchValue, maxResultCount) {
             var patternMatcher = ts.createPatternMatcher(searchValue);
             var rawItems = [];
+            // Search the declarations in all files and output matched NavigateToItem into array of NavigateToItem[] 
             ts.forEach(program.getSourceFiles(), function (sourceFile) {
                 cancellationToken.throwIfCancellationRequested();
                 var nameToDeclarations = sourceFile.getNamedDeclarations();
                 for (var name_1 in nameToDeclarations) {
                     var declarations = ts.getProperty(nameToDeclarations, name_1);
                     if (declarations) {
+                        // First do a quick check to see if the name of the declaration matches the 
+                        // last portion of the (possibly) dotted name they're searching for.
                         var matches = patternMatcher.getMatchesForLastSegmentOfPattern(name_1);
                         if (!matches) {
                             continue;
                         }
                         for (var _i = 0; _i < declarations.length; _i++) {
                             var declaration = declarations[_i];
+                            // It was a match!  If the pattern has dots in it, then also see if the 
+                            // declaration container matches as well.
                             if (patternMatcher.patternContainsDots) {
                                 var containers = getContainers(declaration);
                                 if (!containers) {
@@ -42,6 +48,7 @@ var ts;
             return items;
             function allMatchesAreCaseSensitive(matches) {
                 ts.Debug.assert(matches.length > 0);
+                // This is a case sensitive match, only if all the submatches were case sensitive.
                 for (var _i = 0; _i < matches.length; _i++) {
                     var match = matches[_i];
                     if (!match.isCaseSensitive) {
@@ -52,9 +59,9 @@ var ts;
             }
             function getTextOfIdentifierOrLiteral(node) {
                 if (node) {
-                    if (node.kind === 65 ||
-                        node.kind === 8 ||
-                        node.kind === 7) {
+                    if (node.kind === 66 /* Identifier */ ||
+                        node.kind === 8 /* StringLiteral */ ||
+                        node.kind === 7 /* NumericLiteral */) {
                         return node.text;
                     }
                 }
@@ -66,15 +73,19 @@ var ts;
                     if (text !== undefined) {
                         containers.unshift(text);
                     }
-                    else if (declaration.name.kind === 128) {
+                    else if (declaration.name.kind === 132 /* ComputedPropertyName */) {
                         return tryAddComputedPropertyName(declaration.name.expression, containers, true);
                     }
                     else {
+                        // Don't know how to add this.
                         return false;
                     }
                 }
                 return true;
             }
+            // Only added the names of computed properties if they're simple dotted expressions, like:
+            //
+            //      [X.Y.Z]() { }
             function tryAddComputedPropertyName(expression, containers, includeLastPortion) {
                 var text = getTextOfIdentifierOrLiteral(expression);
                 if (text !== undefined) {
@@ -83,7 +94,7 @@ var ts;
                     }
                     return true;
                 }
-                if (expression.kind === 156) {
+                if (expression.kind === 161 /* PropertyAccessExpression */) {
                     var propertyAccess = expression;
                     if (includeLastPortion) {
                         containers.unshift(propertyAccess.name.text);
@@ -94,11 +105,14 @@ var ts;
             }
             function getContainers(declaration) {
                 var containers = [];
-                if (declaration.name.kind === 128) {
+                // First, if we started with a computed property name, then add all but the last
+                // portion into the container array.
+                if (declaration.name.kind === 132 /* ComputedPropertyName */) {
                     if (!tryAddComputedPropertyName(declaration.name.expression, containers, false)) {
                         return undefined;
                     }
                 }
+                // Now, walk up our containers, adding all their names to the container array.
                 declaration = ts.getContainerNode(declaration);
                 while (declaration) {
                     if (!tryAddSingleDeclarationName(declaration, containers)) {
@@ -120,8 +134,13 @@ var ts;
                 }
                 return bestMatchKind;
             }
+            // This means "compare in a case insensitive manner."
             var baseSensitivity = { sensitivity: "base" };
             function compareNavigateToItems(i1, i2) {
+                // TODO(cyrusn): get the gamut of comparisons that VS already uses here.
+                // Right now we just sort by kind first, and then by name of the item.
+                // We first sort case insensitively.  So "Aaa" will come before "bar".
+                // Then we sort case sensitively, so "aaa" will come before "Aaa".
                 return i1.matchKind - i2.matchKind ||
                     i1.name.localeCompare(i2.name, undefined, baseSensitivity) ||
                     i1.name.localeCompare(i2.name);
@@ -137,6 +156,7 @@ var ts;
                     isCaseSensitive: rawItem.isCaseSensitive,
                     fileName: rawItem.fileName,
                     textSpan: ts.createTextSpanFromBounds(declaration.getStart(), declaration.getEnd()),
+                    // TODO(jfreeman): What should be the containerName when the container has a computed name?
                     containerName: container && container.name ? container.name.text : "",
                     containerKind: container && container.name ? ts.getNodeKind(container) : ""
                 };

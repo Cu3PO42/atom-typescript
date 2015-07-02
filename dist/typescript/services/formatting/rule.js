@@ -1,11 +1,12 @@
 ///<reference path='references.ts' />
+/* @internal */
 var ts;
 (function (ts) {
     var formatting;
     (function (formatting) {
         var Rule = (function () {
             function Rule(Descriptor, Operation, Flag) {
-                if (Flag === void 0) { Flag = 0; }
+                if (Flag === void 0) { Flag = 0 /* None */; }
                 this.Descriptor = Descriptor;
                 this.Operation = Operation;
                 this.Flag = Flag;

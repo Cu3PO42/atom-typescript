@@ -1,4 +1,5 @@
 /// <reference path="references.ts"/>
+/* @internal */
 var ts;
 (function (ts) {
     var formatting;
@@ -17,6 +18,7 @@ var ts;
                 return this.rulesMap;
             };
             RulesProvider.prototype.ensureUpToDate = function (options) {
+                // TODO: Should this be '==='?
                 if (this.options == null || !ts.compareDataObjects(this.options, options)) {
                     var activeRules = this.createActiveRules(options);
                     var rulesMap = formatting.RulesMap.create(activeRules);
